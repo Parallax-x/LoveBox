@@ -58,23 +58,24 @@ class VKinderBot:
                 else:
                     if text not in ['start', 'начать']:
                         self.write_msg(event.user_id, 'Введите start или начать, чтобы запустить бота!')
-                        bot.start()
+                        self.start()
 
     def after_start(self):
         for event in self.longpoll.listen():
             if event.type == VkEventType.MESSAGE_NEW and event.to_me:
                 text = event.text.lower()
                 if text == 'да':
-                    bot.start_vkinder(event)
+                    self.start_vkinder(event)
                 elif text == 'нет':
-                    self.write_msg(event.user_id, 'До свидания!')
-                    bot.start()
+                    self.write_msg(event.user_id, 'До свидания! Заходите еще!')
+                    self.start()
                 elif text == 'help':
                     self.write_msg(event.user_id, 'Приложение для поиска партнера, при вводе start \
                     или начать вы запустите бота. Последовательно заполните данные для поиска партнера.')
-                    bot.start()
+                    self.after_start()
                 else:
                     self.write_msg(event.user_id, 'Не понял вашего сообщения!')
+                    self.start()
 
     def start_vkinder(self, event):
         dating_id = event.user_id
@@ -82,9 +83,10 @@ class VKinderBot:
 
         if len(user) == 0:
             self.get_user(event.user_id)
-            return self.start_vkinder(event)
+            self.start_vkinder(event)
         else:
-            self.search_partner_command(event)
+            self.update_user_data(event)
+            # self.search_partner_command(event)
 
     def search_partner_command(self, event):
         user = session.query(User).all()
@@ -103,6 +105,22 @@ class VKinderBot:
         self.write_msg(event.user_id, 'Поехали', keyboard=keyboard)
 
         partners_get = self.search_partner(partners_sex, city, age_to, age_from)
+        if len(partners_get) == 0:
+            keyboard = VkKeyboard(one_time=True)
+            keyboard.add_button('Да', color=VkKeyboardColor.PRIMARY)
+            keyboard.add_button('Нет', color=VkKeyboardColor.NEGATIVE)
+            self.write_msg(event.user_id, 'Совпадений не найдено! Хотите изменить параметры?', keyboard=keyboard)
+            for event in self.longpoll.listen():
+                if event.type == VkEventType.MESSAGE_NEW and event.to_me and event.text:
+                    text = event.text.lower()
+                    if text == 'да':
+                        self.update_user_data(event)
+                    elif text == 'нет':
+                        self.write_msg(event.user_id, 'До свидания! Заходите еще!')
+                        self.start()
+                    else:
+                        self.write_msg(event.user_id, 'Не понял вас, попробуйте поменять параметры поиска!')
+                        self.update_user_data(event)
 
         list_partners = []
         for partners in partners_get:
@@ -123,24 +141,28 @@ class VKinderBot:
             bd_id.append(ig_id)
 
         for partner in list_partners:
-            if partner[2] not in list(bd_id):
+            if partner[2] not in bd_id:
                 photo_list = self.choose_photo(partner[2])
                 photo_dict = {}
-                if photo_list['count'] >= 3:
-                    for photo in photo_list['items']:
-                        photo_id = photo['id']
-                        likes = photo['likes']['count']
-                        photo_dict[likes] = f'photo{partner[2]}_{photo_id}'
+                # if photo_list['count'] >= 3:
+                for photo in photo_list['items']:
+                    photo_id = photo['id']
+                    likes = photo['likes']['count']
+                    photo_dict[likes] = f'photo{partner[2]}_{photo_id}'
+                # else:
+                #     pass
+                # sorted_photo_dict = {}
+                # for k in sorted(photo_dict.keys(), reverse=True):
+                #     sorted_photo_dict[k] = photo_dict[k]
+
+                if len(photo_dict) > 3:
+                    photos = list(photo_dict.values())[:-4:-1]
                 else:
-                    pass
-                sorted_photo_dict = {}
-                for k in sorted(photo_dict.keys(), reverse=True):
-                    sorted_photo_dict[k] = photo_dict[k]
-                photos = list(sorted_photo_dict.values())[0:3]
+                    photos = list(photo_dict.values())
 
                 link_photo = []
                 for photog in photo_list['items']:
-                    if photog['likes']['count'] in list(sorted_photo_dict.keys())[0:3]:
+                    if photog['likes']['count'] in list(photo_dict.keys())[:-4:-1]:
                         link_photo.append([photog['id'], photog['likes']['count'], photog['sizes'][-1]['url']])
 
                 self.write_msg(event.user_id, partner[0] + ' ' + partner[1])
@@ -166,20 +188,55 @@ class VKinderBot:
                             break
                         else:
                             self.write_msg(event.user_id, 'Не понял вас, попробуйте еще.')
+            else:
+                self.not_peoples(event)
+                # self.write_msg(event.user_id, 'Новых совпадений не найдено! Хотите посмотреть понравившихся \n'
+                #                               'или изменить параметры поиска?')
+                # keyboard = VkKeyboard(one_time=False)
+                # keyboard.add_button('Понравившиеся', color=VkKeyboardColor.PRIMARY)
+                # keyboard.add_button('Изменить', color=VkKeyboardColor.NEGATIVE)
+                # for event in self.longpoll.listen():
+                #     if event.type == VkEventType.MESSAGE_NEW and event.to_me and event.text:
+                #         text = event.text.lower()
+                #         if text == 'понравившиеся':
+                #             self.show_liked(event)
+                #             self.start()
+                #         elif text == 'изменить':
+                #             self.update_user_data(event)
+                #         else:
+                #             self.write_msg(event.user_id, 'Не понял вас, попробуйте еще.')
+                #             self.start()
+
+    def not_peoples(self, event):
+        keyboard = VkKeyboard(one_time=True)
+        keyboard.add_button('Понравившиеся', color=VkKeyboardColor.PRIMARY)
+        keyboard.add_button('Изменить', color=VkKeyboardColor.NEGATIVE)
+        self.write_msg(event.user_id, 'Новых совпадений не найдено! Хотите посмотреть понравившихся \n'
+                                      'или изменить параметры поиска?', keyboard=keyboard)
+        for event in self.longpoll.listen():
+            if event.type == VkEventType.MESSAGE_NEW and event.to_me and event.text:
+                text = event.text.lower()
+                if text == 'понравившиеся':
+                    self.show_liked(event)
+                    self.start()
+                elif text == 'изменить':
+                    self.update_user_data(event)
+                else:
+                    self.write_msg(event.user_id, 'Не понял вас, попробуйте снова. Введите Начать или Start')
+                    self.start()
 
     def get_user(self, user_id):
         info = self.get_vk('https://api.vk.com/method/users.get', {'user_ids': user_id})[0]
         first_name = info['first_name']
         last_name = info['last_name']
-        city = bot.get_city(user_id)
-        sex = bot.get_gender(user_id)
-        age_to = bot.get_age_to(user_id)
-        age_from = bot.get_age_from(user_id)
+        city = self.get_city(user_id)
+        sex = self.get_gender(user_id)
+        age_to = self.get_age_to(user_id)
+        age_from = self.get_age_from(user_id)
         user = User(dating_id=user_id, first_name=first_name, last_name=last_name, age_to=age_to, age_from=age_from,
                     city=city, partners_sex=sex)
         session.add(user)
         session.commit()
-        # self.write_msg(user_id, f'Пользователь {user_id} добавлен.')
 
     def get_gender(self, user_id, gender=''):
         keyboard = VkKeyboard(one_time=True)
@@ -195,7 +252,7 @@ class VKinderBot:
                     gender = '2'
                 else:
                     self.write_msg(user_id, 'Выберите: девушка или парень.')
-                    bot.get_gender(user_id)
+                    self.get_gender(user_id)
                 return gender
 
     def get_city(self, user_id):
@@ -208,7 +265,7 @@ class VKinderBot:
                                                                                      'count': '1'})['items']
                 if len(city) == 0:
                     self.write_msg(user_id, f'Не нашел города с названием {city_name}.')
-                    bot.get_city(user_id)
+                    self.get_city(user_id)
                 else:
                     city = city_name
                 return city
@@ -228,20 +285,27 @@ class VKinderBot:
                 return age_from
 
     def search_partner(self, partners_sex, city, age_to, age_from):
-        partners = self.get_vk('https://api.vk.com/method/users.search', {'is_closed': 'False',
-                                                                          'has_photo': '1',
-                                                                          'sex': partners_sex,
-                                                                          'status': '6', 'hometown': city,
-                                                                          'age_from': age_from,
-                                                                          'age_to': age_to, 'count': '20'})['items']
+        partners6 = self.get_vk('https://api.vk.com/method/users.search', {'is_closed': 'False',
+                                                                           'has_photo': '1',
+                                                                           'sex': partners_sex,
+                                                                           'status': '6', 'hometown': city,
+                                                                           'age_from': age_from,
+                                                                           'age_to': age_to, 'count': '1000'})['items']
+        partners1 = self.get_vk('https://api.vk.com/method/users.search', {'is_closed': 'False',
+                                                                           'has_photo': '1',
+                                                                           'sex': partners_sex,
+                                                                           'status': '1', 'hometown': city,
+                                                                           'age_from': age_from,
+                                                                           'age_to': age_to, 'count': '1000'})['items']
+        partners = partners6 + partners1
         return partners
 
     def choose_photo(self, partner_id):
         photo_list = self.get_vk('https://api.vk.com/method/photos.get', {'owner_id': partner_id,
                                                                           'album_id': 'profile',
-                                                                          'extended': '1',
-                                                                          'count': '20',
-                                                                          'photo_sizes': '0'})
+                                                                          'rev': 1,
+                                                                          'extended': 1,
+                                                                          'photo_sizes': 0})
         return photo_list
 
     def send_photo(self, user_id, photo_send):
@@ -286,6 +350,7 @@ class VKinderBot:
     def show_liked(self, event):
         keyboard = VkKeyboard(one_time=False)
         keyboard.add_button('Продолжить поиск', color=VkKeyboardColor.PRIMARY)
+        keyboard.add_button('Изменить параметры', color=VkKeyboardColor.SECONDARY)
         id_dater = event.user_id
         liked_users = session.query(MatchingUser).filter(MatchingUser.id_dater == id_dater).all()
 
@@ -299,23 +364,27 @@ class VKinderBot:
         self.write_msg(event.user_id, 'Продолжить поиск?', keyboard=keyboard)
         for event in self.longpoll.listen():
             if event.type == VkEventType.MESSAGE_NEW and event.to_me and event.text:
-                text = event.text
-                if text == 'Продолжить поиск':
+                text = event.text.lower()
+                if text == 'продолжить поиск':
                     self.search_partner_command(event)
+                elif text == 'изменить параметры':
+                    self.update_user_data(event)
+                else:
+                    self.write_msg(event.user_id, 'Не понял вашего сообщения.')
+                    self.start()
 
     def update_user_data(self, event):
         user = session.query(User).all()[0]
         us_id = user.dating_id
-        city = bot.get_city(us_id)
-        sex = bot.get_gender(us_id)
-        age_to = bot.get_age_to(us_id)
-        age_from = bot.get_age_from(us_id)
+        city = self.get_city(us_id)
+        sex = self.get_gender(us_id)
+        age_to = self.get_age_to(us_id)
+        age_from = self.get_age_from(us_id)
         session.query(User).filter(User.dating_id == us_id).update({'age_from': age_from,
                                                                     'age_to': age_to,
                                                                     'partners_sex': sex,
                                                                     'city': city})
         session.commit()
-        self.write_msg(event.user_id, 'Информация обновлена.')
         self.search_partner_command(event)
 
 
