@@ -82,14 +82,15 @@ class VKinderBot:
         user = session.query(User).filter(User.dating_id == dating_id).all()
 
         if len(user) == 0:
-            self.get_user(event.user_id)
+            self.get_user(event)
             self.start_vkinder(event)
         else:
             self.update_user_data(event)
             # self.search_partner_command(event)
 
     def search_partner_command(self, event):
-        user = session.query(User).all()
+        dating_id = event.user_id
+        user = session.query(User).filter(User.dating_id == dating_id).all()
         age_from = user[0].age_from
         age_to = user[0].age_to
         city = user[0].city
@@ -188,24 +189,26 @@ class VKinderBot:
                             break
                         else:
                             self.write_msg(event.user_id, 'Не понял вас, попробуйте еще.')
-            else:
-                self.not_peoples(event)
-                # self.write_msg(event.user_id, 'Новых совпадений не найдено! Хотите посмотреть понравившихся \n'
-                #                               'или изменить параметры поиска?')
-                # keyboard = VkKeyboard(one_time=False)
-                # keyboard.add_button('Понравившиеся', color=VkKeyboardColor.PRIMARY)
-                # keyboard.add_button('Изменить', color=VkKeyboardColor.NEGATIVE)
-                # for event in self.longpoll.listen():
-                #     if event.type == VkEventType.MESSAGE_NEW and event.to_me and event.text:
-                #         text = event.text.lower()
-                #         if text == 'понравившиеся':
-                #             self.show_liked(event)
-                #             self.start()
-                #         elif text == 'изменить':
-                #             self.update_user_data(event)
-                #         else:
-                #             self.write_msg(event.user_id, 'Не понял вас, попробуйте еще.')
-                #             self.start()
+            elif partner[2] in bd_id:
+                continue
+        else:
+            self.not_peoples(event)
+            # self.write_msg(event.user_id, 'Новых совпадений не найдено! Хотите посмотреть понравившихся \n'
+            #                               'или изменить параметры поиска?')
+            # keyboard = VkKeyboard(one_time=False)
+            # keyboard.add_button('Понравившиеся', color=VkKeyboardColor.PRIMARY)
+            # keyboard.add_button('Изменить', color=VkKeyboardColor.NEGATIVE)
+            # for event in self.longpoll.listen():
+            #     if event.type == VkEventType.MESSAGE_NEW and event.to_me and event.text:
+            #         text = event.text.lower()
+            #         if text == 'понравившиеся':
+            #             self.show_liked(event)
+            #             self.start()
+            #         elif text == 'изменить':
+            #             self.update_user_data(event)
+            #         else:
+            #             self.write_msg(event.user_id, 'Не понял вас, попробуйте еще.')
+            #             self.start()
 
     def not_peoples(self, event):
         keyboard = VkKeyboard(one_time=True)
@@ -225,16 +228,16 @@ class VKinderBot:
                     self.write_msg(event.user_id, 'Не понял вас, попробуйте снова. Введите Начать или Start')
                     self.start()
 
-    def get_user(self, user_id):
-        info = self.get_vk('https://api.vk.com/method/users.get', {'user_ids': user_id})[0]
+    def get_user(self, event):
+        info = self.get_vk('https://api.vk.com/method/users.get', {'user_ids': event.user_id})[0]
         first_name = info['first_name']
         last_name = info['last_name']
-        city = self.get_city(user_id)
-        sex = self.get_gender(user_id)
-        age_to = self.get_age_to(user_id)
-        age_from = self.get_age_from(user_id)
-        user = User(dating_id=user_id, first_name=first_name, last_name=last_name, age_to=age_to, age_from=age_from,
-                    city=city, partners_sex=sex)
+        city = self.get_city(event.user_id)
+        sex = self.get_gender(event.user_id)
+        age_to = self.get_age_to(event.user_id)
+        age_from = self.get_age_from(event.user_id)
+        user = User(dating_id=event.user_id, first_name=first_name, last_name=last_name, age_to=age_to,
+                    age_from=age_from, city=city, partners_sex=sex)
         session.add(user)
         session.commit()
 
@@ -251,8 +254,8 @@ class VKinderBot:
                 elif text == 'Парень':
                     gender = '2'
                 else:
-                    self.write_msg(user_id, 'Выберите: девушка или парень.')
-                    self.get_gender(user_id)
+                    self.write_msg(event.user_id, 'Выберите: девушка или парень.')
+                    self.get_gender(event.user_id)
                 return gender
 
     def get_city(self, user_id):
@@ -264,8 +267,8 @@ class VKinderBot:
                                                                                      'q': city_name,
                                                                                      'count': '1'})['items']
                 if len(city) == 0:
-                    self.write_msg(user_id, f'Не нашел города с названием {city_name}.')
-                    self.get_city(user_id)
+                    self.write_msg(event.user_id, f'Не нашел города с названием {city_name}.')
+                    self.get_city(event.user_id)
                 else:
                     city = city_name
                 return city
@@ -348,7 +351,7 @@ class VKinderBot:
         session.commit()
 
     def show_liked(self, event):
-        keyboard = VkKeyboard(one_time=False)
+        keyboard = VkKeyboard(one_time=True)
         keyboard.add_button('Продолжить поиск', color=VkKeyboardColor.PRIMARY)
         keyboard.add_button('Изменить параметры', color=VkKeyboardColor.SECONDARY)
         id_dater = event.user_id
@@ -374,8 +377,8 @@ class VKinderBot:
                     self.start()
 
     def update_user_data(self, event):
-        user = session.query(User).all()[0]
-        us_id = user.dating_id
+        # user = session.query(User).all()[0]
+        us_id = event.user_id
         city = self.get_city(us_id)
         sex = self.get_gender(us_id)
         age_to = self.get_age_to(us_id)
